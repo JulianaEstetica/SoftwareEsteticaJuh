@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Estetica CRM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main id="auth-screen" class="auth-screen">
+      <section class="auth-panel">
+        <div>
+          <p class="eyebrow">Estetica CRM</p>
+          <h1>Gerencie clientes, retornos e cuidados em um so lugar.</h1>
+          <p class="auth-copy">
+            Entre com seu e-mail para acessar seu painel privado. Cada conta ve apenas os proprios dados.
+          </p>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <label>
+            E-mail
+            <input id="auth-email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            Senha
+            <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required />
+          </label>
+          <div class="auth-actions">
+            <button class="button primary" type="submit">Entrar</button>
+            <button id="create-account-button" class="button ghost" type="button">Criar conta</button>
+          </div>
+          <p id="auth-message" class="form-message" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <main id="app-screen" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">EC</span>
+          <div>
+            <strong>Estetica CRM</strong>
+            <small id="user-email"></small>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-link active" data-view="dashboard-view" type="button">Dashboard</button>
+          <button class="nav-link" data-view="clientes-view" type="button">Clientes</button>
+          <button class="nav-link" data-view="procedimentos-view" type="button">Procedimentos</button>
+          <button class="nav-link" data-view="notificacoes-view" type="button">Notificacoes</button>
+        </nav>
+
+        <button id="logout-button" class="button subtle" type="button">Sair</button>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Painel</p>
+            <h2 id="view-title">Dashboard</h2>
+          </div>
+          <button id="mobile-menu-button" class="button ghost mobile-only" type="button">Menu</button>
+        </header>
+
+        <section id="dashboard-view" class="view active">
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>Total de clientes</span>
+              <strong id="metric-total-clientes">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Limpezas no mes</span>
+              <strong id="metric-limpezas-mes">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Aniversarios hoje</span>
+              <strong id="metric-aniversarios-hoje">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Notificacoes pendentes</span>
+              <strong id="metric-notificacoes">0</strong>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <article class="panel">
+              <div class="panel-header">
+                <h3>Resumo de hoje</h3>
+              </div>
+              <div id="today-summary" class="summary-list empty-state">Nenhuma acao importante para hoje.</div>
+            </article>
+            <article class="panel">
+              <div class="panel-header">
+                <h3>Retornos de limpeza</h3>
+              </div>
+              <div id="return-summary" class="summary-list empty-state">Nenhum retorno vencendo hoje.</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="clientes-view" class="view">
+          <div class="content-grid">
+            <form id="client-form" class="panel form-panel">
+              <div class="panel-header">
+                <h3 id="client-form-title">Novo cliente</h3>
+                <button id="cancel-client-edit" class="button subtle hidden" type="button">Cancelar edicao</button>
+              </div>
+              <input id="client-id" type="hidden" />
+              <label>
+                Nome completo
+                <input id="client-name" type="text" required />
+              </label>
+              <label>
+                Data de nascimento
+                <input id="client-birth" type="date" />
+              </label>
+              <div class="form-row">
+                <label>
+                  WhatsApp
+                  <input id="client-phone" type="tel" placeholder="(22) 99999-9999" />
+                </label>
+                <label>
+                  E-mail
+                  <input id="client-email" type="email" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label>
+                  Instagram
+                  <input id="client-instagram" type="text" placeholder="@cliente" />
+                </label>
+                <label>
+                  Status do brinde
+                  <select id="client-gift-status">
+                    <option value="Sem brinde">Sem brinde</option>
+                    <option value="Aguardando">Aguardando</option>
+                    <option value="Liberado">Liberado</option>
+                    <option value="Brinde entregue">Brinde entregue</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Endereco
+                <input id="client-address" type="text" />
+              </label>
+              <label>
+                Observacoes
+                <textarea id="client-notes" rows="3"></textarea>
+              </label>
+              <button class="button primary" type="submit">Salvar cliente</button>
+            </form>
+
+            <article class="panel">
+              <div class="panel-header">
+                <h3>Clientes cadastrados</h3>
+                <input id="client-search" class="search-input" type="search" placeholder="Buscar cliente" />
+              </div>
+              <div id="clients-list" class="record-list empty-state">Nenhum cliente cadastrado.</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="procedimentos-view" class="view">
+          <div class="content-grid">
+            <form id="procedure-form" class="panel form-panel">
+              <div class="panel-header">
+                <h3>Novo procedimento</h3>
+              </div>
+              <label>
+                Cliente
+                <select id="procedure-client" required></select>
+              </label>
+              <label>
+                Procedimento
+                <input id="procedure-name" type="text" placeholder="Limpeza de Pele" required />
+              </label>
+              <div class="form-row">
+                <label>
+                  Data
+                  <input id="procedure-date" type="date" required />
+                </label>
+                <label>
+                  Valor
+                  <input id="procedure-value" type="number" min="0" step="0.01" placeholder="180.00" />
+                </label>
+              </div>
+              <label>
+                Observacoes
+                <textarea id="procedure-notes" rows="3"></textarea>
+              </label>
+              <button class="button primary" type="submit">Salvar procedimento</button>
+            </form>
+
+            <article class="panel">
+              <div class="panel-header">
+                <h3>Historico de procedimentos</h3>
+              </div>
+              <div id="procedures-list" class="record-list empty-state">Nenhum procedimento registrado.</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="notificacoes-view" class="view">
+          <article class="panel">
+            <div class="panel-header">
+              <h3>Notificacoes</h3>
+              <select id="notification-filter">
+                <option value="pendente">Pendentes</option>
+                <option value="resolvido">Resolvidas</option>
+                <option value="todas">Todas</option>
+              </select>
+            </div>
+            <div id="notifications-list" class="record-list empty-state">Nenhuma notificacao encontrada.</div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
