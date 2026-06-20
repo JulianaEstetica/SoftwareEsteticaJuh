@@ -10,6 +10,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -158,6 +159,7 @@ clientForm.addEventListener("submit", async (event) => {
 
     if (id) {
       await updateDoc(docFor("clientes", id), { ...payload, atualizado_em: serverTimestamp() });
+      upsertClientInState({ id, ...payload });
     } else {
       const docRef = await addDoc(pathFor("clientes"), {
         ...payload,
@@ -166,8 +168,10 @@ clientForm.addEventListener("submit", async (event) => {
         atualizado_em: serverTimestamp()
       });
       await updateDoc(docRef, { id: docRef.id });
+      upsertClientInState({ id: docRef.id, ...payload });
     }
 
+    renderAll();
     resetClientForm();
     clientMessage.textContent = "Cliente salvo com sucesso. Se nao aparecer na lista, verifique o campo de busca.";
     clientMessage.classList.add("success-message");
@@ -282,8 +286,8 @@ function subscribeToData() {
   const coreSubscriptions = [
     {
       label: "clientes",
-      itemQuery: query(pathFor("clientes"), orderBy("nome")),
-      setter: (docs) => (state.clientes = docs)
+      itemQuery: query(pathFor("clientes")),
+      setter: setClientsFromDocs
     },
     {
       label: "procedimentos",
@@ -324,6 +328,8 @@ function subscribeToData() {
     ...coreSubscriptions.map((subscription) => subscribeToCollection(subscription, showCoreDataLoadError)),
     ...financeSubscriptions.map((subscription) => subscribeToCollection(subscription, showFinanceDataLoadError))
   ];
+
+  loadClientsOnce();
 }
 
 function subscribeToCollection({ label, itemQuery, setter }, onError) {
@@ -407,21 +413,62 @@ function clearSubscriptions() {
   state.categorias = [];
 }
 
+async function loadClientsOnce() {
+  try {
+    const snapshot = await getDocs(pathFor("clientes"));
+    setClientsFromDocs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    console.info(`Clientes carregados do Firestore: ${state.clientes.length}`);
+    renderAll();
+  } catch (error) {
+    console.error("Erro no carregamento direto de clientes:", error);
+    showCoreDataLoadError(error, "clientes");
+  }
+}
+
+function setClientsFromDocs(docs) {
+  state.clientes = normalizeClients(docs);
+  console.info(`Snapshot de clientes recebido: ${state.clientes.length}`);
+}
+
+function normalizeClients(docs) {
+  return docs
+    .map((cliente) => ({
+      ...cliente,
+      nome: clientDisplayName(cliente)
+    }))
+    .sort((a, b) => clientDisplayName(a).localeCompare(clientDisplayName(b), "pt-BR"));
+}
+
+function upsertClientInState(cliente) {
+  const withoutCurrent = state.clientes.filter((item) => item.id !== cliente.id);
+  state.clientes = normalizeClients([...withoutCurrent, cliente]);
+}
+
 function renderAll() {
-  toggleCustomPeriod();
-  renderDashboard();
-  renderClients();
-  renderClientOptions();
-  renderProcedureOptions();
-  renderCategoryOptions();
-  renderProcedures();
-  renderNotifications();
-  renderFinanceSummary();
-  renderRevenues();
-  renderExpenses();
-  renderInvestments();
-  renderCategories();
-  renderReports();
+  [
+    ["filtro de periodo", toggleCustomPeriod],
+    ["dashboard", renderDashboard],
+    ["clientes", renderClients],
+    ["opcoes de clientes", renderClientOptions],
+    ["opcoes de procedimentos", renderProcedureOptions],
+    ["categorias financeiras", renderCategoryOptions],
+    ["procedimentos", renderProcedures],
+    ["notificacoes", renderNotifications],
+    ["resumo financeiro", renderFinanceSummary],
+    ["receitas", renderRevenues],
+    ["despesas", renderExpenses],
+    ["investimentos", renderInvestments],
+    ["categorias", renderCategories],
+    ["relatorios", renderReports]
+  ].forEach(([label, render]) => safeRender(label, render));
+}
+
+function safeRender(label, render) {
+  try {
+    render();
+  } catch (error) {
+    console.error(`Erro ao renderizar ${label}:`, error);
+  }
 }
 
 function renderDashboard() {
@@ -448,7 +495,7 @@ function renderDashboard() {
   $("#metric-notificacoes").textContent = pendingNotifications.length;
 
   const todayItems = [
-    ...birthdaysToday.map((cliente) => summaryCard("Aniversario hoje", cliente.nome, "warning")),
+      ...birthdaysToday.map((cliente) => summaryCard("Aniversario hoje", clientDisplayName(cliente), "warning")),
     ...pendingNotifications
       .filter((item) => item.data_aviso === today)
       .map((item) => summaryCard(item.tipo, item.mensagem, "success"))
@@ -468,7 +515,7 @@ function renderDashboard() {
 
 function renderClients() {
   const term = clientSearch.value.trim().toLowerCase();
-  const clientes = state.clientes.filter((cliente) => cliente.nome?.toLowerCase().includes(term));
+  const clientes = state.clientes.filter((cliente) => clientDisplayName(cliente).toLowerCase().includes(term));
 
   $("#clients-list").innerHTML =
     clientes
@@ -477,7 +524,7 @@ function renderClients() {
           <article class="record-card">
             <header>
               <div>
-                <strong>${escapeHTML(cliente.nome)}</strong>
+                <strong>${escapeHTML(clientDisplayName(cliente))}</strong>
                 <div class="record-meta">
                   <span>${formatDate(cliente.nascimento) || "Sem nascimento"}</span>
                   <span>${escapeHTML(cliente.telefone || "Sem WhatsApp")}</span>
@@ -503,7 +550,7 @@ function renderClients() {
 }
 
 function renderClientOptions() {
-  const options = state.clientes.map((cliente) => `<option value="${cliente.id}">${escapeHTML(cliente.nome)}</option>`).join("");
+  const options = state.clientes.map((cliente) => `<option value="${cliente.id}">${escapeHTML(clientDisplayName(cliente))}</option>`).join("");
   $("#procedure-client").innerHTML = options || `<option value="">Cadastre um cliente primeiro</option>`;
   $("#revenue-client").innerHTML = `<option value="">Sem cliente vinculado</option>${options}`;
 }
@@ -757,7 +804,7 @@ async function saveProcedure() {
         tipo: "Retorno de limpeza",
         cliente_id: clienteId,
         data_aviso: returnDate,
-        mensagem: `Cliente ${cliente.nome} ja faz 30 dias da limpeza de pele. Entre em contato para agendar manutencao.`,
+        mensagem: `Cliente ${clientDisplayName(cliente)} ja faz 30 dias da limpeza de pele. Entre em contato para agendar manutencao.`,
         status: "pendente",
         criado_em: serverTimestamp()
       });
@@ -955,7 +1002,7 @@ function showFinanceTab(tabId) {
 
 function fillClientForm(cliente) {
   $("#client-id").value = cliente.id;
-  $("#client-name").value = cliente.nome || "";
+  $("#client-name").value = clientDisplayName(cliente);
   $("#client-birth").value = cliente.nascimento || "";
   $("#client-phone").value = cliente.telefone || "";
   $("#client-email").value = cliente.email || "";
@@ -1344,7 +1391,20 @@ function getFinanceById(name, id) {
 }
 
 function clientName(id) {
-  return getClientById(id)?.nome || "Sem cliente";
+  const cliente = getClientById(id);
+  return cliente ? clientDisplayName(cliente) : "Sem cliente";
+}
+
+function clientDisplayName(cliente = {}) {
+  return (
+    cliente.nome ||
+    cliente.name ||
+    cliente.nome_completo ||
+    cliente.nomeCompleto ||
+    cliente.fullName ||
+    cliente.cliente ||
+    "Cliente sem nome"
+  );
 }
 
 function isSkinCleaning(value = "") {
