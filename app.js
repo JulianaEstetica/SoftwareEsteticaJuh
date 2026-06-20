@@ -65,6 +65,7 @@ const sidebar = $(".sidebar");
 const clientForm = $("#client-form");
 const clientSearch = $("#client-search");
 const cancelClientEdit = $("#cancel-client-edit");
+const clientMessage = $("#client-message");
 const procedureForm = $("#procedure-form");
 const cancelProcedureEdit = $("#cancel-procedure-edit");
 const notificationFilter = $("#notification-filter");
@@ -96,7 +97,12 @@ createAccountButton.addEventListener("click", async () => {
 
   try {
     await createUserWithEmailAndPassword(auth, $("#auth-email").value.trim(), $("#auth-password").value);
+    authMessage.textContent = "Conta criada. Agora cadastre seus clientes na aba Clientes.";
+    authMessage.classList.remove("error");
+    authMessage.classList.add("success-message");
   } catch (error) {
+    authMessage.classList.remove("success-message");
+    authMessage.classList.add("error");
     authMessage.textContent = friendlyAuthError(error);
   }
 });
@@ -126,35 +132,49 @@ onAuthStateChanged(auth, (user) => {
 
 clientForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  clientMessage.textContent = "";
+  clientMessage.classList.remove("success-message");
 
-  const id = $("#client-id").value;
-  const payload = {
-    nome: $("#client-name").value.trim(),
-    nascimento: $("#client-birth").value,
-    telefone: $("#client-phone").value.trim(),
-    email: $("#client-email").value.trim(),
-    instagram: $("#client-instagram").value.trim(),
-    endereco: $("#client-address").value.trim(),
-    observacoes: $("#client-notes").value.trim(),
-    status_brinde: $("#client-gift-status").value,
-    indicacoes_convertidas: Number(getClientById(id)?.indicacoes_convertidas || 0),
-    ultimo_procedimento: getClientById(id)?.ultimo_procedimento || "",
-    ultima_limpeza: getClientById(id)?.ultima_limpeza || ""
-  };
-
-  if (id) {
-    await updateDoc(docFor("clientes", id), { ...payload, atualizado_em: serverTimestamp() });
-  } else {
-    const docRef = await addDoc(pathFor("clientes"), {
-      ...payload,
-      data_cadastro: todayISO(),
-      criado_em: serverTimestamp(),
-      atualizado_em: serverTimestamp()
-    });
-    await updateDoc(docRef, { id: docRef.id });
+  if (!state.uid) {
+    clientMessage.textContent = "Voce precisa estar logada para salvar clientes.";
+    return;
   }
 
-  resetClientForm();
+  try {
+    const id = $("#client-id").value;
+    const payload = {
+      nome: $("#client-name").value.trim(),
+      nascimento: $("#client-birth").value,
+      telefone: $("#client-phone").value.trim(),
+      email: $("#client-email").value.trim(),
+      instagram: $("#client-instagram").value.trim(),
+      endereco: $("#client-address").value.trim(),
+      observacoes: $("#client-notes").value.trim(),
+      status_brinde: $("#client-gift-status").value,
+      indicacoes_convertidas: Number(getClientById(id)?.indicacoes_convertidas || 0),
+      ultimo_procedimento: getClientById(id)?.ultimo_procedimento || "",
+      ultima_limpeza: getClientById(id)?.ultima_limpeza || ""
+    };
+
+    if (id) {
+      await updateDoc(docFor("clientes", id), { ...payload, atualizado_em: serverTimestamp() });
+    } else {
+      const docRef = await addDoc(pathFor("clientes"), {
+        ...payload,
+        data_cadastro: todayISO(),
+        criado_em: serverTimestamp(),
+        atualizado_em: serverTimestamp()
+      });
+      await updateDoc(docRef, { id: docRef.id });
+    }
+
+    resetClientForm();
+    clientMessage.textContent = "Cliente salvo com sucesso. Se nao aparecer na lista, verifique o campo de busca.";
+    clientMessage.classList.add("success-message");
+  } catch (error) {
+    console.error("Erro ao salvar cliente:", error);
+    clientMessage.textContent = firestoreErrorMessage(error, "Nao foi possivel salvar o cliente.");
+  }
 });
 
 procedureForm.addEventListener("submit", async (event) => {
@@ -270,10 +290,17 @@ function subscribeToData() {
   ];
 
   state.unsubscribers = subscriptions.map(([itemQuery, setter]) =>
-    onSnapshot(itemQuery, (snapshot) => {
-      setter(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-      renderAll();
-    })
+    onSnapshot(
+      itemQuery,
+      (snapshot) => {
+        setter(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        renderAll();
+      },
+      (error) => {
+        console.error("Erro ao carregar dados:", error);
+        showDataLoadError(error);
+      }
+    )
   );
 }
 
@@ -957,6 +984,8 @@ function resetClientForm() {
   clientForm.reset();
   $("#client-id").value = "";
   $("#client-form-title").textContent = "Novo cliente";
+  clientMessage.textContent = "";
+  clientMessage.classList.remove("success-message");
   cancelClientEdit.classList.add("hidden");
 }
 
@@ -1415,6 +1444,30 @@ function friendlyAuthError(error) {
   };
 
   return messages[error.code] || "Nao foi possivel concluir. Verifique os dados e tente novamente.";
+}
+
+function firestoreErrorMessage(error, fallback) {
+  const messages = {
+    "permission-denied":
+      "Permissao negada no Firebase. Revise as regras do Firestore para permitir acesso em users/{uid} e subcolecoes.",
+    unauthenticated: "Sessao expirada. Saia e entre novamente para salvar os dados.",
+    unavailable: "Firebase indisponivel no momento. Verifique a internet e tente de novo."
+  };
+
+  return messages[error.code] || `${fallback} Detalhe: ${error.message || error.code || "erro desconhecido"}`;
+}
+
+function showDataLoadError(error) {
+  const message = firestoreErrorMessage(error, "Nao foi possivel carregar os dados.");
+  const clientsList = $("#clients-list");
+  if (clientsList) {
+    clientsList.textContent = message;
+    clientsList.classList.add("empty-state");
+  }
+  if (clientMessage) {
+    clientMessage.textContent = message;
+    clientMessage.classList.remove("success-message");
+  }
 }
 
 resetProcedureForm();
