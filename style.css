@@ -215,6 +215,10 @@ textarea {
   font-size: 0.9rem;
 }
 
+.success-message {
+  color: var(--accent);
+}
+
 .app-shell {
   display: grid;
   min-height: 100vh;
