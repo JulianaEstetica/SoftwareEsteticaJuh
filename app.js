@@ -279,36 +279,103 @@ document.addEventListener("click", async (event) => {
 });
 
 function subscribeToData() {
-  const subscriptions = [
-    [query(pathFor("clientes"), orderBy("nome")), (docs) => (state.clientes = docs)],
-    [query(pathFor("procedimentos"), orderBy("data", "desc")), (docs) => (state.procedimentos = docs)],
-    [query(pathFor("notificacoes"), orderBy("data_aviso", "desc")), (docs) => (state.notificacoes = docs)],
-    [query(financePath("receitas"), orderBy("data", "desc")), (docs) => (state.receitas = docs)],
-    [query(financePath("despesas"), orderBy("data", "desc")), (docs) => (state.despesas = docs)],
-    [query(financePath("investimentos"), orderBy("data_compra", "desc")), (docs) => (state.investimentos = docs)],
-    [query(financePath("categorias"), orderBy("nome")), handleCategoriesSnapshot]
+  const coreSubscriptions = [
+    {
+      label: "clientes",
+      itemQuery: query(pathFor("clientes"), orderBy("nome")),
+      setter: (docs) => (state.clientes = docs)
+    },
+    {
+      label: "procedimentos",
+      itemQuery: query(pathFor("procedimentos"), orderBy("data", "desc")),
+      setter: (docs) => (state.procedimentos = docs)
+    },
+    {
+      label: "notificacoes",
+      itemQuery: query(pathFor("notificacoes"), orderBy("data_aviso", "desc")),
+      setter: (docs) => (state.notificacoes = docs)
+    }
   ];
 
-  state.unsubscribers = subscriptions.map(([itemQuery, setter]) =>
-    onSnapshot(
-      itemQuery,
-      (snapshot) => {
-        setter(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-        renderAll();
-      },
-      (error) => {
-        console.error("Erro ao carregar dados:", error);
-        showDataLoadError(error);
-      }
-    )
+  const financeSubscriptions = [
+    {
+      label: "receitas",
+      itemQuery: query(financePath("receitas"), orderBy("data", "desc")),
+      setter: (docs) => (state.receitas = docs)
+    },
+    {
+      label: "despesas",
+      itemQuery: query(financePath("despesas"), orderBy("data", "desc")),
+      setter: (docs) => (state.despesas = docs)
+    },
+    {
+      label: "investimentos",
+      itemQuery: query(financePath("investimentos"), orderBy("data_compra", "desc")),
+      setter: (docs) => (state.investimentos = docs)
+    },
+    {
+      label: "categorias financeiras",
+      itemQuery: query(financePath("categorias"), orderBy("nome")),
+      setter: handleCategoriesSnapshot
+    }
+  ];
+
+  state.unsubscribers = [
+    ...coreSubscriptions.map((subscription) => subscribeToCollection(subscription, showCoreDataLoadError)),
+    ...financeSubscriptions.map((subscription) => subscribeToCollection(subscription, showFinanceDataLoadError))
+  ];
+}
+
+function subscribeToCollection({ label, itemQuery, setter }, onError) {
+  return onSnapshot(
+    itemQuery,
+    (snapshot) => {
+      Promise.resolve(setter(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })))).catch((error) => {
+        console.error(`Erro ao processar ${label}:`, error);
+        onError(error, label);
+      });
+      renderAll();
+    },
+    (error) => {
+      console.error(`Erro ao carregar ${label}:`, error);
+      onError(error, label);
+    }
   );
+}
+
+function showCoreDataLoadError(error, label) {
+  if (label !== "clientes") return;
+  const message = firestoreErrorMessage(error, "Nao foi possivel carregar os clientes.");
+  const clientsList = $("#clients-list");
+  if (clientsList) {
+    clientsList.textContent = message;
+    clientsList.classList.add("empty-state");
+  }
+}
+
+function showFinanceDataLoadError(error, label) {
+  console.warn(`O financeiro nao carregou ${label}. Os clientes continuam independentes.`, error);
+  state.receitas = state.receitas || [];
+  state.despesas = state.despesas || [];
+  state.investimentos = state.investimentos || [];
+  state.categorias = state.categorias || [];
+  renderAll();
+  const alerts = $("#financial-alerts");
+  if (alerts) {
+    alerts.textContent = firestoreErrorMessage(error, "Nao foi possivel carregar o financeiro.");
+    alerts.classList.add("empty-state");
+  }
 }
 
 async function handleCategoriesSnapshot(docs) {
   state.categorias = docs;
   if (docs.length === 0 && state.defaultsSeededForUid !== state.uid) {
     state.defaultsSeededForUid = state.uid;
-    await seedDefaultCategories();
+    try {
+      await seedDefaultCategories();
+    } catch (error) {
+      console.warn("Nao foi possivel criar categorias financeiras padrao.", error);
+    }
   }
 }
 
