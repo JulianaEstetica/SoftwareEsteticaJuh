@@ -55,6 +55,7 @@
           <button class="nav-link active" data-view="dashboard-view" type="button">Dashboard</button>
           <button class="nav-link" data-view="clientes-view" type="button">Clientes</button>
           <button class="nav-link" data-view="procedimentos-view" type="button">Procedimentos</button>
+          <button class="nav-link" data-view="agenda-view" type="button">Agenda</button>
           <button class="nav-link" data-view="financeiro-view" type="button">Financeiro</button>
           <button class="nav-link" data-view="notificacoes-view" type="button">Notificacoes</button>
         </nav>
@@ -95,6 +96,14 @@
             <article class="metric-card">
               <span>Despesas do mes</span>
               <strong id="metric-despesas-mes">R$ 0,00</strong>
+            </article>
+            <article class="metric-card">
+              <span>Atendimentos hoje</span>
+              <strong id="metric-atendimentos-hoje">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Proximo atendimento</span>
+              <strong id="metric-proximo-atendimento">--</strong>
             </article>
             <article class="metric-card">
               <span>Limpezas no mes</span>
@@ -270,6 +279,139 @@
               </div>
               <div id="procedures-list" class="record-list empty-state">Nenhum procedimento registrado.</div>
             </article>
+          </div>
+        </section>
+
+        <section id="agenda-view" class="view">
+          <div class="agenda-toolbar panel">
+            <div>
+              <p class="eyebrow">Agenda</p>
+              <h3 id="agenda-month-label">Mes atual</h3>
+            </div>
+            <div class="agenda-controls">
+              <button id="agenda-prev-month" class="button ghost" type="button">Anterior</button>
+              <button id="agenda-today" class="button subtle" type="button">Hoje</button>
+              <button id="agenda-next-month" class="button ghost" type="button">Proximo</button>
+              <select id="agenda-status-filter">
+                <option value="">Todos status</option>
+                <option value="Agendado">Agendado</option>
+                <option value="Confirmado">Confirmado</option>
+                <option value="Concluido">Concluido</option>
+                <option value="Cancelado">Cancelado</option>
+                <option value="Faltou">Faltou</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="content-grid agenda-layout">
+            <form id="appointment-form" class="panel form-panel">
+              <div class="panel-header">
+                <h3 id="appointment-form-title">Novo atendimento</h3>
+                <button id="cancel-appointment-edit" class="button subtle hidden" type="button">Cancelar edicao</button>
+              </div>
+              <input id="appointment-id" type="hidden" />
+              <label>
+                Cliente
+                <select id="appointment-client" required></select>
+              </label>
+              <label>
+                Procedimento/servico
+                <input id="appointment-service" type="text" placeholder="Limpeza de Pele" required />
+              </label>
+              <div class="form-row">
+                <label>
+                  Data
+                  <input id="appointment-date" type="date" required />
+                </label>
+                <label>
+                  Status
+                  <select id="appointment-status">
+                    <option value="Agendado">Agendado</option>
+                    <option value="Confirmado">Confirmado</option>
+                    <option value="Concluido">Concluido</option>
+                    <option value="Cancelado">Cancelado</option>
+                    <option value="Faltou">Faltou</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>
+                  Hora inicio
+                  <input id="appointment-start-time" type="time" required />
+                </label>
+                <label>
+                  Hora fim
+                  <input id="appointment-end-time" type="time" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label>
+                  Valor previsto
+                  <input id="appointment-value" type="number" min="0" step="0.01" placeholder="180.00" />
+                </label>
+                <label>
+                  Custo estimado
+                  <input id="appointment-cost" type="number" min="0" step="0.01" placeholder="35.00" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label>
+                  Forma de pagamento
+                  <select id="appointment-payment-method">
+                    <option value="Pix">Pix</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Cartao de debito">Cartao de debito</option>
+                    <option value="Cartao de credito">Cartao de credito</option>
+                    <option value="Boleto">Boleto</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </label>
+                <label>
+                  Status do pagamento
+                  <select id="appointment-payment-status">
+                    <option value="Pendente">Pendente</option>
+                    <option value="Recebido">Recebido</option>
+                    <option value="Cancelado">Cancelado</option>
+                  </select>
+                </label>
+              </div>
+              <label class="check-row">
+                <input id="appointment-generate-procedure" type="checkbox" checked />
+                Ao concluir, gerar procedimento e receita
+              </label>
+              <label>
+                Observacoes
+                <textarea id="appointment-notes" rows="3"></textarea>
+              </label>
+              <button class="button primary" type="submit">Salvar atendimento</button>
+              <p id="appointment-message" class="form-message" role="status"></p>
+            </form>
+
+            <div class="agenda-main">
+              <article class="panel">
+                <div class="calendar-weekdays">
+                  <span>Dom</span>
+                  <span>Seg</span>
+                  <span>Ter</span>
+                  <span>Qua</span>
+                  <span>Qui</span>
+                  <span>Sex</span>
+                  <span>Sab</span>
+                </div>
+                <div id="agenda-calendar" class="calendar-grid"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-header stackable">
+                  <h3 id="agenda-selected-day-title">Atendimentos do dia</h3>
+                  <div class="filters-inline">
+                    <input id="appointment-search" class="search-input" type="search" placeholder="Buscar atendimento" />
+                  </div>
+                </div>
+                <div id="appointments-day-list" class="record-list empty-state">Nenhum atendimento no dia selecionado.</div>
+              </article>
+            </div>
           </div>
         </section>
 
