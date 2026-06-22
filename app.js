@@ -41,11 +41,14 @@ const state = {
   uid: null,
   clientes: [],
   procedimentos: [],
+  agendamentos: [],
   notificacoes: [],
   receitas: [],
   despesas: [],
   investimentos: [],
   categorias: [],
+  agendaMonthDate: todayISO(),
+  selectedAgendaDate: todayISO(),
   unsubscribers: [],
   defaultsSeededForUid: null
 };
@@ -69,6 +72,10 @@ const cancelClientEdit = $("#cancel-client-edit");
 const clientMessage = $("#client-message");
 const procedureForm = $("#procedure-form");
 const cancelProcedureEdit = $("#cancel-procedure-edit");
+const appointmentForm = $("#appointment-form");
+const appointmentMessage = $("#appointment-message");
+const appointmentSearch = $("#appointment-search");
+const cancelAppointmentEdit = $("#cancel-appointment-edit");
 const notificationFilter = $("#notification-filter");
 
 const revenueForm = $("#revenue-form");
@@ -186,6 +193,11 @@ procedureForm.addEventListener("submit", async (event) => {
   await saveProcedure();
 });
 
+appointmentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveAppointment();
+});
+
 revenueForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const id = $("#revenue-id").value;
@@ -223,13 +235,24 @@ categoryForm.addEventListener("submit", async (event) => {
 
 cancelClientEdit.addEventListener("click", resetClientForm);
 cancelProcedureEdit.addEventListener("click", resetProcedureForm);
+cancelAppointmentEdit.addEventListener("click", resetAppointmentForm);
 $("#cancel-revenue-edit").addEventListener("click", resetRevenueForm);
 $("#cancel-expense-edit").addEventListener("click", resetExpenseForm);
 $("#cancel-investment-edit").addEventListener("click", resetInvestmentForm);
 $("#cancel-category-edit").addEventListener("click", resetCategoryForm);
 
 clientSearch.addEventListener("input", renderClients);
+appointmentSearch.addEventListener("input", renderAgenda);
 notificationFilter.addEventListener("change", renderNotifications);
+$("#agenda-status-filter").addEventListener("change", renderAgenda);
+$("#agenda-prev-month").addEventListener("click", () => moveAgendaMonth(-1));
+$("#agenda-next-month").addEventListener("click", () => moveAgendaMonth(1));
+$("#agenda-today").addEventListener("click", goToTodayAgenda);
+$("#appointment-date").addEventListener("change", () => {
+  state.selectedAgendaDate = $("#appointment-date").value || todayISO();
+  state.agendaMonthDate = state.selectedAgendaDate;
+  renderAgenda();
+});
 financePeriod.addEventListener("change", renderAll);
 $("#finance-start-date").addEventListener("change", renderAll);
 $("#finance-end-date").addEventListener("change", renderAll);
@@ -249,10 +272,28 @@ document.addEventListener("click", async (event) => {
 
   if (action === "edit-client") fillClientForm(getClientById(id));
   if (action === "delete-client" && confirm("Excluir este cliente?")) await deleteDoc(docFor("clientes", id));
-  if (action === "whatsapp-client") openWhatsApp(getClientById(id), `Ola ${firstName(getClientById(id)?.nome)}! Tudo bem?`);
+  if (action === "whatsapp-client") openWhatsApp(getClientById(id), `Ola ${firstName(clientDisplayName(getClientById(id)))}! Tudo bem?`);
 
   if (action === "edit-procedure") fillProcedureForm(getProcedureById(id));
   if (action === "delete-procedure") await deleteProcedure(id);
+
+  if (action === "select-agenda-day") {
+    state.selectedAgendaDate = button.dataset.date;
+    $("#appointment-date").value = state.selectedAgendaDate;
+    renderAgenda();
+  }
+
+  if (action === "edit-appointment") fillAppointmentForm(getAppointmentById(id));
+  if (action === "delete-appointment" && confirm("Excluir este atendimento da agenda?")) {
+    await deleteDoc(docFor("agenda", id));
+  }
+  if (action === "confirm-appointment") await updateAppointmentStatus(id, "Confirmado");
+  if (action === "complete-appointment") await updateAppointmentStatus(id, "Concluido");
+  if (action === "cancel-appointment" && confirm("Cancelar este atendimento?")) await updateAppointmentStatus(id, "Cancelado");
+  if (action === "whatsapp-appointment") {
+    const appointment = getAppointmentById(id);
+    openWhatsApp(getClientById(appointment?.cliente_id), whatsappMessageForAppointment(appointment));
+  }
 
   if (action === "edit-revenue") fillRevenueForm(getFinanceById("receitas", id));
   if (action === "delete-revenue" && confirm("Excluir esta receita?")) await deleteDoc(financeDoc("receitas", id));
@@ -293,6 +334,11 @@ function subscribeToData() {
       label: "procedimentos",
       itemQuery: query(pathFor("procedimentos"), orderBy("data", "desc")),
       setter: (docs) => (state.procedimentos = docs)
+    },
+    {
+      label: "agenda",
+      itemQuery: query(pathFor("agenda")),
+      setter: setAppointmentsFromDocs
     },
     {
       label: "notificacoes",
@@ -406,6 +452,7 @@ function clearSubscriptions() {
   state.unsubscribers = [];
   state.clientes = [];
   state.procedimentos = [];
+  state.agendamentos = [];
   state.notificacoes = [];
   state.receitas = [];
   state.despesas = [];
@@ -444,15 +491,38 @@ function upsertClientInState(cliente) {
   state.clientes = normalizeClients([...withoutCurrent, cliente]);
 }
 
+function setAppointmentsFromDocs(docs) {
+  state.agendamentos = normalizeAppointments(docs);
+}
+
+function normalizeAppointments(docs) {
+  return docs
+    .map((item) => ({
+      ...item,
+      data: item.data || todayISO(),
+      hora_inicio: item.hora_inicio || "",
+      procedimento: item.procedimento || item.servico || "Atendimento",
+      status: item.status || "Agendado"
+    }))
+    .sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)));
+}
+
+function upsertAppointmentInState(appointment) {
+  const withoutCurrent = state.agendamentos.filter((item) => item.id !== appointment.id);
+  state.agendamentos = normalizeAppointments([...withoutCurrent, appointment]);
+}
+
 function renderAll() {
   [
     ["filtro de periodo", toggleCustomPeriod],
     ["dashboard", renderDashboard],
     ["clientes", renderClients],
     ["opcoes de clientes", renderClientOptions],
+    ["opcoes da agenda", renderAppointmentOptions],
     ["opcoes de procedimentos", renderProcedureOptions],
     ["categorias financeiras", renderCategoryOptions],
     ["procedimentos", renderProcedures],
+    ["agenda", renderAgenda],
     ["notificacoes", renderNotifications],
     ["resumo financeiro", renderFinanceSummary],
     ["receitas", renderRevenues],
@@ -484,18 +554,23 @@ function renderDashboard() {
     (item) => isSkinCleaning(item.procedimento) && item.data?.startsWith(currentMonth)
   );
   const pendingNotifications = state.notificacoes.filter((item) => item.status === "pendente");
+  const appointmentsToday = appointmentsForDate(today).filter((item) => !["Cancelado", "Faltou"].includes(item.status));
+  const nextAppointment = upcomingAppointments(todayISO())[0];
 
   $("#metric-total-clientes").textContent = state.clientes.length;
   $("#metric-receita-mes").textContent = formatMoney(summary.receivedRevenue);
   $("#metric-lucro-mes").textContent = formatMoney(summary.netProfit);
   $("#metric-despesas-mes").textContent = formatMoney(summary.paidExpenses);
   $("#metric-pendencias-receber").textContent = formatMoney(summary.pendingRevenue);
+  $("#metric-atendimentos-hoje").textContent = appointmentsToday.length;
+  $("#metric-proximo-atendimento").textContent = nextAppointment ? `${nextAppointment.hora_inicio || "--"} ${clientName(nextAppointment.cliente_id)}` : "--";
   $("#metric-limpezas-mes").textContent = cleaningsThisMonth.length;
   $("#metric-aniversarios-hoje").textContent = birthdaysToday.length;
   $("#metric-notificacoes").textContent = pendingNotifications.length;
 
   const todayItems = [
-      ...birthdaysToday.map((cliente) => summaryCard("Aniversario hoje", clientDisplayName(cliente), "warning")),
+    ...appointmentsToday.map((item) => summaryCard("Atendimento hoje", `${item.hora_inicio || "--"} - ${clientName(item.cliente_id)} | ${item.procedimento}`, "success")),
+    ...birthdaysToday.map((cliente) => summaryCard("Aniversario hoje", clientDisplayName(cliente), "warning")),
     ...pendingNotifications
       .filter((item) => item.data_aviso === today)
       .map((item) => summaryCard(item.tipo, item.mensagem, "success"))
@@ -553,6 +628,11 @@ function renderClientOptions() {
   const options = state.clientes.map((cliente) => `<option value="${cliente.id}">${escapeHTML(clientDisplayName(cliente))}</option>`).join("");
   $("#procedure-client").innerHTML = options || `<option value="">Cadastre um cliente primeiro</option>`;
   $("#revenue-client").innerHTML = `<option value="">Sem cliente vinculado</option>${options}`;
+}
+
+function renderAppointmentOptions() {
+  const options = state.clientes.map((cliente) => `<option value="${cliente.id}">${escapeHTML(clientDisplayName(cliente))}</option>`).join("");
+  $("#appointment-client").innerHTML = options || `<option value="">Cadastre um cliente primeiro</option>`;
 }
 
 function renderProcedureOptions() {
@@ -615,6 +695,57 @@ function renderNotifications() {
   $("#notifications-list").innerHTML =
     notificacoes.map(notificationCard).join("") || "Nenhuma notificacao encontrada.";
   $("#notifications-list").classList.toggle("empty-state", notificacoes.length === 0);
+}
+
+function renderAgenda() {
+  const monthDate = parseISODate(state.agendaMonthDate || todayISO());
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  $("#agenda-month-label").textContent = formatMonthYear(dateToISO(firstDay));
+
+  const cells = [];
+  for (let index = 0; index < 42; index += 1) {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    const iso = dateToISO(date);
+    const dayAppointments = filteredAppointments().filter((item) => item.data === iso);
+    const isCurrentMonth = date >= firstDay && date <= lastDay;
+    const isSelected = iso === state.selectedAgendaDate;
+    const isToday = iso === todayISO();
+
+    cells.push(`
+      <button class="calendar-day ${isCurrentMonth ? "" : "muted"} ${isSelected ? "selected" : ""} ${isToday ? "today" : ""}" type="button" data-action="select-agenda-day" data-date="${iso}">
+        <span>${date.getDate()}</span>
+        ${dayAppointments.length ? `<strong>${dayAppointments.length}</strong>` : ""}
+        <div>
+          ${dayAppointments.slice(0, 2).map((item) => `<small>${escapeHTML(item.hora_inicio || "--")} ${escapeHTML(clientName(item.cliente_id))}</small>`).join("")}
+        </div>
+      </button>
+    `);
+  }
+
+  $("#agenda-calendar").innerHTML = cells.join("");
+  renderSelectedDayAppointments();
+}
+
+function renderSelectedDayAppointments() {
+  const selected = state.selectedAgendaDate || todayISO();
+  const term = appointmentSearch.value.trim().toLowerCase();
+  const items = filteredAppointments()
+    .filter((item) => item.data === selected)
+    .filter((item) => {
+      const text = `${clientName(item.cliente_id)} ${item.procedimento} ${item.status} ${item.observacoes || ""}`.toLowerCase();
+      return text.includes(term);
+    });
+
+  $("#agenda-selected-day-title").textContent = `Atendimentos de ${formatDate(selected)}`;
+  $("#appointments-day-list").innerHTML = items.map(appointmentCard).join("") || "Nenhum atendimento no dia selecionado.";
+  $("#appointments-day-list").classList.toggle("empty-state", items.length === 0);
 }
 
 function renderFinanceSummary() {
@@ -814,6 +945,139 @@ async function saveProcedure() {
   }
 
   resetProcedureForm();
+}
+
+async function saveAppointment() {
+  appointmentMessage.textContent = "";
+  appointmentMessage.classList.remove("success-message");
+
+  if (!state.uid) {
+    appointmentMessage.textContent = "Voce precisa estar logada para salvar a agenda.";
+    return;
+  }
+
+  try {
+    const id = $("#appointment-id").value;
+    const existing = getAppointmentById(id);
+    const payload = appointmentPayloadFromForm(existing);
+
+    if (id) {
+      await updateDoc(docFor("agenda", id), { ...payload, atualizado_em: serverTimestamp(), updated_at: serverTimestamp() });
+      upsertAppointmentInState({ id, ...existing, ...payload });
+    } else {
+      const docRef = await addDoc(pathFor("agenda"), {
+        ...payload,
+        criado_em: serverTimestamp(),
+        atualizado_em: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+      await updateDoc(docRef, { id: docRef.id });
+      upsertAppointmentInState({ id: docRef.id, ...payload });
+    }
+
+    const saved = getAppointmentById(id) || state.agendamentos.find((item) => item.data === payload.data && item.hora_inicio === payload.hora_inicio && item.cliente_id === payload.cliente_id);
+    if (saved?.status === "Concluido" && saved.gerar_procedimento !== false) {
+      await syncAppointmentCompletion(saved);
+    }
+
+    state.selectedAgendaDate = payload.data;
+    state.agendaMonthDate = payload.data;
+    renderAll();
+    resetAppointmentForm();
+    appointmentMessage.textContent = "Atendimento salvo com sucesso.";
+    appointmentMessage.classList.add("success-message");
+  } catch (error) {
+    console.error("Erro ao salvar atendimento:", error);
+    appointmentMessage.textContent = firestoreErrorMessage(error, "Nao foi possivel salvar o atendimento.");
+  }
+}
+
+function appointmentPayloadFromForm(existing = {}) {
+  const clienteId = $("#appointment-client").value;
+  return {
+    cliente_id: clienteId,
+    cliente_nome: clientName(clienteId),
+    procedimento: $("#appointment-service").value.trim(),
+    data: $("#appointment-date").value,
+    hora_inicio: $("#appointment-start-time").value,
+    hora_fim: $("#appointment-end-time").value,
+    valor: toNumber($("#appointment-value").value),
+    custo_estimado: toNumber($("#appointment-cost").value),
+    status: $("#appointment-status").value,
+    forma_pagamento: $("#appointment-payment-method").value,
+    status_pagamento: $("#appointment-payment-status").value,
+    observacoes: $("#appointment-notes").value.trim(),
+    gerar_procedimento: $("#appointment-generate-procedure").checked,
+    procedimento_id: existing?.procedimento_id || "",
+    receita_id: existing?.receita_id || ""
+  };
+}
+
+async function updateAppointmentStatus(id, status) {
+  const appointment = getAppointmentById(id);
+  if (!appointment) return;
+  await updateDoc(docFor("agenda", id), { status, atualizado_em: serverTimestamp(), updated_at: serverTimestamp() });
+  upsertAppointmentInState({ ...appointment, status });
+  if (status === "Concluido" && appointment.gerar_procedimento !== false) {
+    await syncAppointmentCompletion({ ...appointment, status });
+  }
+  renderAll();
+}
+
+async function syncAppointmentCompletion(appointment) {
+  const procedurePayload = {
+    cliente_id: appointment.cliente_id,
+    procedimento: appointment.procedimento,
+    data: appointment.data,
+    valor: Number(appointment.valor || 0),
+    custo_estimado: Number(appointment.custo_estimado || 0),
+    categoria_financeira: "Procedimento",
+    gerar_receita_financeiro: Number(appointment.valor || 0) > 0,
+    forma_pagamento: appointment.forma_pagamento || "Pix",
+    status_pagamento: appointment.status_pagamento === "Cancelado" ? "Cancelado" : appointment.status_pagamento || "Recebido",
+    observacoes: appointment.observacoes || "",
+    atualizado_em: serverTimestamp()
+  };
+
+  let procedureId = appointment.procedimento_id;
+  let procedureRef;
+
+  if (procedureId) {
+    procedureRef = docFor("procedimentos", procedureId);
+    await updateDoc(procedureRef, procedurePayload);
+  } else {
+    procedureRef = await addDoc(pathFor("procedimentos"), { ...procedurePayload, criado_em: serverTimestamp() });
+    procedureId = procedureRef.id;
+    await updateDoc(procedureRef, { id: procedureId });
+  }
+
+  let receitaId = appointment.receita_id;
+  if (Number(appointment.valor || 0) > 0) {
+    const revenuePayload = revenuePayloadFromProcedure({ ...procedurePayload, id: procedureId });
+    if (receitaId) {
+      await updateDoc(financeDoc("receitas", receitaId), revenuePayload);
+    } else {
+      const receitaRef = await addDoc(financePath("receitas"), {
+        ...revenuePayload,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        criado_em: serverTimestamp(),
+        atualizado_em: serverTimestamp()
+      });
+      receitaId = receitaRef.id;
+      await updateDoc(receitaRef, { id: receitaId });
+    }
+    await updateDoc(procedureRef, { receita_id: receitaId });
+  }
+
+  await updateDoc(docFor("agenda", appointment.id), {
+    procedimento_id: procedureId,
+    receita_id: receitaId || "",
+    atualizado_em: serverTimestamp(),
+    updated_at: serverTimestamp()
+  });
+  upsertAppointmentInState({ ...appointment, procedimento_id: procedureId, receita_id: receitaId || "" });
 }
 
 async function deleteProcedure(id) {
@@ -1032,6 +1296,30 @@ function fillProcedureForm(item) {
   showView("procedimentos-view");
 }
 
+function fillAppointmentForm(item) {
+  if (!item) return;
+  $("#appointment-id").value = item.id;
+  $("#appointment-client").value = item.cliente_id || "";
+  $("#appointment-service").value = item.procedimento || "";
+  $("#appointment-date").value = item.data || todayISO();
+  $("#appointment-start-time").value = item.hora_inicio || "";
+  $("#appointment-end-time").value = item.hora_fim || "";
+  $("#appointment-value").value = item.valor || "";
+  $("#appointment-cost").value = item.custo_estimado || "";
+  $("#appointment-status").value = item.status || "Agendado";
+  $("#appointment-payment-method").value = item.forma_pagamento || "Pix";
+  $("#appointment-payment-status").value = item.status_pagamento || "Pendente";
+  $("#appointment-generate-procedure").checked = item.gerar_procedimento !== false;
+  $("#appointment-notes").value = item.observacoes || "";
+  $("#appointment-form-title").textContent = "Editar atendimento";
+  appointmentMessage.textContent = "";
+  cancelAppointmentEdit.classList.remove("hidden");
+  state.selectedAgendaDate = item.data || todayISO();
+  state.agendaMonthDate = state.selectedAgendaDate;
+  showView("agenda-view");
+  renderAgenda();
+}
+
 function fillRevenueForm(item) {
   $("#revenue-id").value = item.id;
   $("#revenue-client").value = item.cliente_id || "";
@@ -1110,6 +1398,21 @@ function resetProcedureForm() {
   $("#procedure-generate-revenue").checked = true;
   $("#procedure-form-title").textContent = "Novo procedimento";
   cancelProcedureEdit.classList.add("hidden");
+}
+
+function resetAppointmentForm() {
+  appointmentForm.reset();
+  $("#appointment-id").value = "";
+  $("#appointment-date").value = state.selectedAgendaDate || todayISO();
+  $("#appointment-start-time").value = nextHalfHour();
+  $("#appointment-status").value = "Agendado";
+  $("#appointment-payment-method").value = "Pix";
+  $("#appointment-payment-status").value = "Pendente";
+  $("#appointment-generate-procedure").checked = true;
+  $("#appointment-form-title").textContent = "Novo atendimento";
+  appointmentMessage.textContent = "";
+  appointmentMessage.classList.remove("success-message");
+  cancelAppointmentEdit.classList.add("hidden");
 }
 
 function resetRevenueForm() {
@@ -1246,6 +1549,42 @@ function notificationCard(item) {
       </div>
     </article>
   `;
+}
+
+function appointmentCard(item) {
+  const cliente = getClientById(item.cliente_id);
+  const canConfirm = item.status === "Agendado";
+  const canComplete = !["Concluido", "Cancelado", "Faltou"].includes(item.status);
+  return `
+    <article class="record-card appointment-card">
+      <header>
+        <div>
+          <strong>${escapeHTML(item.hora_inicio || "--")} ${escapeHTML(item.procedimento)}</strong>
+          <div class="record-meta">
+            <span>${escapeHTML(clientName(item.cliente_id))}</span>
+            <span>${formatDate(item.data)}</span>
+            ${item.hora_fim ? `<span>Ate ${escapeHTML(item.hora_fim)}</span>` : ""}
+            <span>${formatMoney(item.valor)}</span>
+            <span class="tag ${statusClass(item.status)}">${escapeHTML(item.status || "Agendado")}</span>
+          </div>
+        </div>
+      </header>
+      ${item.observacoes ? `<p>${escapeHTML(item.observacoes)}</p>` : ""}
+      <div class="record-actions">
+        ${cliente?.telefone ? `<button class="button ghost" type="button" data-action="whatsapp-appointment" data-id="${item.id}">WhatsApp</button>` : ""}
+        ${canConfirm ? `<button class="button subtle" type="button" data-action="confirm-appointment" data-id="${item.id}">Confirmar</button>` : ""}
+        ${canComplete ? `<button class="button subtle" type="button" data-action="complete-appointment" data-id="${item.id}">Concluir</button>` : ""}
+        ${item.status !== "Cancelado" ? `<button class="button danger" type="button" data-action="cancel-appointment" data-id="${item.id}">Cancelar</button>` : ""}
+        <button class="button subtle" type="button" data-action="edit-appointment" data-id="${item.id}">Editar</button>
+        <button class="button danger" type="button" data-action="delete-appointment" data-id="${item.id}">Excluir</button>
+      </div>
+    </article>
+  `;
+}
+
+function filteredAppointments() {
+  const status = $("#agenda-status-filter").value;
+  return state.agendamentos.filter((item) => !status || item.status === status);
 }
 
 function renderProcedureReport(start, end) {
@@ -1386,6 +1725,10 @@ function getProcedureById(id) {
   return state.procedimentos.find((item) => item.id === id);
 }
 
+function getAppointmentById(id) {
+  return state.agendamentos.find((item) => item.id === id);
+}
+
 function getFinanceById(name, id) {
   return state[name].find((item) => item.id === id);
 }
@@ -1407,6 +1750,40 @@ function clientDisplayName(cliente = {}) {
   );
 }
 
+function appointmentsForDate(date) {
+  return state.agendamentos.filter((item) => item.data === date).sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)));
+}
+
+function upcomingAppointments(fromDate) {
+  const now = new Date();
+  return state.agendamentos
+    .filter((item) => !["Cancelado", "Faltou", "Concluido"].includes(item.status))
+    .filter((item) => item.data >= fromDate)
+    .filter((item) => {
+      if (item.data !== todayISO()) return true;
+      return !item.hora_inicio || `${item.data}T${item.hora_inicio}` >= dateTimeLocalKey(now);
+    })
+    .sort((a, b) => appointmentSortKey(a).localeCompare(appointmentSortKey(b)));
+}
+
+function appointmentSortKey(item) {
+  return `${item.data || ""}T${item.hora_inicio || "00:00"}-${item.cliente_id || ""}`;
+}
+
+function moveAgendaMonth(direction) {
+  const current = parseISODate(state.agendaMonthDate || todayISO());
+  current.setMonth(current.getMonth() + direction);
+  state.agendaMonthDate = dateToISO(current);
+  renderAgenda();
+}
+
+function goToTodayAgenda() {
+  state.agendaMonthDate = todayISO();
+  state.selectedAgendaDate = todayISO();
+  $("#appointment-date").value = todayISO();
+  renderAgenda();
+}
+
 function isSkinCleaning(value = "") {
   return value.trim().toLowerCase() === "limpeza de pele";
 }
@@ -1420,6 +1797,21 @@ function dateToISO(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function parseISODate(dateString) {
+  const [year, month, day] = (dateString || todayISO()).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function dateTimeLocalKey(date) {
+  return `${dateToISO(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function nextHalfHour() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() < 30 ? 30 : 60, 0, 0);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function addDays(dateString, days) {
@@ -1462,6 +1854,10 @@ function formatDate(value) {
   if (!value) return "";
   const [year, month, day] = value.split("-");
   return `${day}/${month}/${year}`;
+}
+
+function formatMonthYear(value) {
+  return parseISODate(value).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
 function formatMoney(value) {
@@ -1509,10 +1905,24 @@ function onlyDigits(value) {
 
 function whatsappMessageForNotification(cliente, notificacao) {
   if (notificacao.tipo === "Retorno de limpeza") {
-    return `Ola ${firstName(cliente?.nome)}! Ja faz 30 dias da sua limpeza de pele. Gostaria de agendar sua manutencao?`;
+    return `Ola ${firstName(clientDisplayName(cliente))}! Ja faz 30 dias da sua limpeza de pele. Gostaria de agendar sua manutencao?`;
   }
 
   return notificacao.mensagem;
+}
+
+function whatsappMessageForAppointment(appointment) {
+  const cliente = getClientById(appointment?.cliente_id);
+  const name = firstName(clientDisplayName(cliente));
+  const date = formatDate(appointment?.data);
+  const time = appointment?.hora_inicio || "";
+  const service = appointment?.procedimento || "atendimento";
+
+  if (appointment?.status === "Confirmado") {
+    return `Ola ${name}! Seu atendimento de ${service} esta confirmado para ${date} as ${time}.`;
+  }
+
+  return `Ola ${name}! Passando para confirmar seu atendimento de ${service} no dia ${date} as ${time}.`;
 }
 
 function summaryCard(title, text, variant) {
@@ -1539,9 +1949,9 @@ function reportLine(label, value) {
 }
 
 function statusClass(status) {
-  if (["Recebido", "Pago"].includes(status)) return "success";
-  if (["Pendente", "Parcelado"].includes(status)) return "warning";
-  if (status === "Cancelado") return "danger";
+  if (["Recebido", "Pago", "Confirmado", "Concluido"].includes(status)) return "success";
+  if (["Pendente", "Parcelado", "Agendado"].includes(status)) return "warning";
+  if (["Cancelado", "Faltou"].includes(status)) return "danger";
   return "";
 }
 
@@ -1598,6 +2008,7 @@ function showDataLoadError(error) {
 }
 
 resetProcedureForm();
+resetAppointmentForm();
 resetRevenueForm();
 resetExpenseForm();
 resetInvestmentForm();
