@@ -526,6 +526,115 @@ textarea {
   align-items: end;
 }
 
+.agenda-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.agenda-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.agenda-controls select {
+  width: auto;
+  min-width: 160px;
+}
+
+.agenda-layout {
+  grid-template-columns: minmax(300px, 430px) 1fr;
+}
+
+.agenda-main {
+  display: grid;
+  gap: 18px;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-weekdays {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.calendar-day {
+  display: grid;
+  min-height: 112px;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+}
+
+.calendar-day:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 18px rgba(87, 54, 68, 0.08);
+}
+
+.calendar-day.muted {
+  background: #fdfbfc;
+  color: #b9a8b0;
+}
+
+.calendar-day.today {
+  border-color: var(--accent);
+}
+
+.calendar-day.selected {
+  border-color: var(--primary);
+  background: var(--surface-strong);
+}
+
+.calendar-day > span {
+  font-weight: 900;
+}
+
+.calendar-day > strong {
+  display: inline-flex;
+  width: fit-content;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eaf7f2;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.calendar-day small {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appointment-card {
+  border-left: 4px solid var(--primary);
+}
+
 .bar-track {
   width: 100%;
   height: 10px;
@@ -564,12 +673,22 @@ textarea {
   .period-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .agenda-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agenda-controls {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 980px) {
   .auth-panel,
   .app-shell,
-  .content-grid {
+  .content-grid,
+  .agenda-layout {
     grid-template-columns: 1fr;
   }
 
@@ -626,5 +745,23 @@ textarea {
   .filters-inline select {
     max-width: none;
     width: 100%;
+  }
+
+  .agenda-controls,
+  .agenda-controls select,
+  .agenda-controls .button {
+    width: 100%;
+  }
+
+  .calendar-weekdays {
+    display: none;
+  }
+
+  .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-day {
+    min-height: auto;
   }
 }
